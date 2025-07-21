@@ -1,0 +1,49 @@
+﻿@{
+    ViewData["Title"] = "Collaborate";
+    var docId = ViewBag.DocId ?? "demo-doc";
+}
+
+<div id="my-toolbar"></div>
+
+<button class="file-upload-button">Load Document</button>
+<input class="file-upload-input" style="display: none;" type="file" accept=".docx">
+
+<div id="superdoc"></div>
+
+@section Scripts {
+    <script type="module">
+        const config = {
+            superdocId: 'superdoc-poc',
+            title: 'SuperDoc PoC',
+            selector: '#superdoc',
+            toolbar: '#my-toolbar',
+            documentMode: 'editing',
+            role: 'editor',
+            documents: [
+                {
+                    id: '@ViewBag.DocId',
+                    type: 'docx',
+                    url: `/docs/@(ViewBag.DocId).docx` // or use `data: fileBlob` if embedded
+                }
+            ],
+            licenseKey: 'community-and-eval-agplv3',
+            telemetry: {
+                enabled: true
+            },
+            user: {
+                name: 'Andrey',
+                email: 'andrey@example.com',
+                image: '/images/user-avatar.png'
+            },
+            modules: {
+                collaboration: {
+                    url: `ws://${window.location.host}/collaboration/@ViewBag.DocId`,
+                    token: 'anonymous' // or generate a JWT if needed
+                }
+            },
+            onReady: () => console.log('SuperDoc is ready'),
+            onException: (err) => console.error('SuperDoc error:', err)
+        };
+        const superdoc = new SuperDocLibrary.SuperDoc(config);
+    </script>
+}

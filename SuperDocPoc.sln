@@ -1,0 +1,36 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36301.6
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SuperDocPoc", "SuperDocPoc.csproj", "{68F1D27B-E022-4F22-A22E-D286553A0F7E}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Demo", "Demo", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Demo", "..\ydotnet\Demo\Demo.csproj", "{9EF8F018-DC54-8497-32DA-C95056DF3317}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{68F1D27B-E022-4F22-A22E-D286553A0F7E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{68F1D27B-E022-4F22-A22E-D286553A0F7E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{68F1D27B-E022-4F22-A22E-D286553A0F7E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{68F1D27B-E022-4F22-A22E-D286553A0F7E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9EF8F018-DC54-8497-32DA-C95056DF3317}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9EF8F018-DC54-8497-32DA-C95056DF3317}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9EF8F018-DC54-8497-32DA-C95056DF3317}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9EF8F018-DC54-8497-32DA-C95056DF3317}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{9EF8F018-DC54-8497-32DA-C95056DF3317} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {D5137959-6A37-4524-ACD3-D3B490405018}
+	EndGlobalSection
+EndGlobal

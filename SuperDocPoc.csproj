@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableSdkContainerDebugging>True</EnableSdkContainerDebugging>
+    <ContainerBaseImage>mcr.microsoft.com/dotnet/aspnet:8.0</ContainerBaseImage>
+    <UserSecretsId>731b52ca-1e69-46dc-bdf9-7064d4d534bf</UserSecretsId>
+    <DockerfileContext>.</DockerfileContext>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ContainerPort Include="8081" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="YDotNet" Version="0.4.3" />
+    <PackageReference Include="YDotNet.Extensions" Version="0.4.3" />
+    <PackageReference Include="YDotNet.Native" Version="0.4.3" />
+    <PackageReference Include="YDotNet.Server" Version="0.4.3" />
+    <PackageReference Include="YDotNet.Server.WebSockets" Version="0.4.3" />
+  </ItemGroup>
+
+</Project>
