@@ -1,16 +1,14 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using System.Xml.Linq;
-using System.Text.Json;
-using System.Text.Json.Nodes;
-using StepWise.Prose.Collections;
+﻿using StepWise.Prose.Collections;
 using StepWise.Prose.Model;
 using System.Xml;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace SuperDocPoc.Converter;
-
+/// <summary>
+/// .NET port of SuperConverter.js for converting DOCX XML to ProseMirror JSON format
+/// Uses prosemirror-dotnet for native ProseMirror structure creation
+/// </summary>
 public class SuperConverterNet
 {
     #region Static Mappings (from JavaScript)
@@ -74,12 +72,12 @@ public class SuperConverterNet
     #region Properties
 
     public bool Debug { get; set; }
-    public Dictionary<string, JsonObject> ConvertedXml { get; private set; } = new();
+    public Dictionary<string, JObject> ConvertedXml { get; private set; } = new();
     public Dictionary<string, object> Media { get; private set; } = new();
     public Dictionary<string, object> Fonts { get; private set; } = new();
     public Dictionary<string, object> AddedMedia { get; private set; } = new();
     public List<object> Comments { get; private set; } = new();
-    public JsonObject InitialJson { get; private set; }
+    public JObject InitialJson { get; private set; }
     public XmlDeclaration Declaration { get; private set; }
     public object PageStyles { get; private set; }
     public object Numbering { get; private set; }
@@ -154,10 +152,14 @@ public class SuperConverterNet
                 ConvertedXml[file.Key] = ParseXmlToJson(file.Value);
 
                 // Store document attributes for main document
-                if (file.Key == "word/document.xml" && ConvertedXml[file.Key]["elements"] is JsonArray elements && elements.Count > 0)
+                if (file.Key == "word/document.xml")
                 {
-                    var docElement = elements[0] as JsonObject;
-                    // Store document attributes if needed
+                    // With Newtonsoft.Json, the structure is different
+                    // No need to check for "elements" array
+                    if (Debug)
+                    {
+                        Console.WriteLine($"Parsed {file.Key} successfully");
+                    }
                 }
             }
             catch (Exception ex)
@@ -166,17 +168,47 @@ public class SuperConverterNet
                 {
                     Console.WriteLine($"Error parsing {file.Key}: {ex.Message}");
                 }
-                throw new InvalidOperationException($"Failed to parse XML file {file.Key}", ex);
+
+                // Skip non-critical files that have XML parsing issues
+                // Only fail for critical document files
+                if (IsCriticalDocumentFile(file.Key))
+                {
+                    throw new InvalidOperationException($"Failed to parse critical XML file {file.Key}", ex);
+                }
+                else
+                {
+                    // Log warning but continue processing
+                    Console.WriteLine($"Warning: Skipping problematic XML file {file.Key} - {ex.Message}");
+                    continue;
+                }
             }
         }
 
         InitialJson = ConvertedXml.ContainsKey("word/document.xml") ? ConvertedXml["word/document.xml"] : null;
 
-        // Extract XML declaration if available
-        if (InitialJson?["declaration"] != null)
+        if (Debug && InitialJson != null)
         {
-            // Store declaration for later use in export
+            Console.WriteLine("Successfully parsed word/document.xml");
+            Console.WriteLine($"InitialJson root properties: {string.Join(", ", InitialJson.Properties().Select(p => p.Name))}");
         }
+    }
+
+    /// <summary>
+    /// Determine if a file is critical for document processing
+    /// </summary>
+    /// <param name="fileName">File name/path</param>
+    /// <returns>True if file is critical</returns>
+    private bool IsCriticalDocumentFile(string fileName)
+    {
+        var criticalFiles = new[]
+        {
+                "word/document.xml",
+                "[Content_Types].xml",
+                "_rels/.rels",
+                "word/_rels/document.xml.rels"
+            };
+
+        return criticalFiles.Contains(fileName);
     }
 
     /// <summary>
@@ -184,97 +216,24 @@ public class SuperConverterNet
     /// </summary>
     /// <param name="xml">XML content</param>
     /// <returns>JSON representation of XML</returns>
-    private JsonObject ParseXmlToJson(string xml)
+    private JObject ParseXmlToJson(string xml)
     {
         try
         {
-            var xDoc = XDocument.Parse(xml);
-            return ConvertXElementToJson(xDoc.Root);
+            // Parse XML
+            var xmlDoc = new XmlDocument();
+            xmlDoc.LoadXml(xml);
+
+            // Convert to JSON using Newtonsoft.Json (similar to xml2js)
+            var jsonString = JsonConvert.SerializeXmlNode(xmlDoc, Newtonsoft.Json.Formatting.None, omitRootObject: false);
+
+            // Parse the JSON string to JObject
+            return JObject.Parse(jsonString);
         }
         catch (Exception ex)
         {
             throw new InvalidOperationException($"Failed to parse XML: {ex.Message}", ex);
         }
-    }
-
-    /// <summary>
-    /// Convert XElement to JSON format similar to xml-js output
-    /// </summary>
-    /// <param name="element">XElement to convert</param>
-    /// <returns>JSON object</returns>
-    private JsonObject ConvertXElementToJson(XElement element)
-    {
-        var result = new JsonObject();
-
-        if (element.Document?.Declaration != null)
-        {
-            result["declaration"] = new JsonObject
-            {
-                ["attributes"] = new JsonObject
-                {
-                    ["version"] = element.Document.Declaration.Version,
-                    ["encoding"] = element.Document.Declaration.Encoding,
-                    ["standalone"] = element.Document.Declaration.Standalone
-                }
-            };
-        }
-
-        var elements = new JsonArray();
-        elements.Add(ConvertElementToJson(element));
-        result["elements"] = elements;
-
-        return result;
-    }
-
-    /// <summary>
-    /// Convert individual XElement to JSON
-    /// </summary>
-    /// <param name="element">XElement to convert</param>
-    /// <returns>JSON object</returns>
-    private JsonObject ConvertElementToJson(XElement element)
-    {
-        var jsonElement = new JsonObject
-        {
-            ["type"] = "element",
-            ["name"] = element.Name.LocalName
-        };
-
-        // Add attributes
-        if (element.Attributes().Any())
-        {
-            var attributes = new JsonObject();
-            foreach (var attr in element.Attributes())
-            {
-                attributes[attr.Name.LocalName] = attr.Value;
-            }
-            jsonElement["attributes"] = attributes;
-        }
-
-        // Add child elements and text
-        var childElements = new JsonArray();
-
-        foreach (var child in element.Nodes())
-        {
-            if (child is XElement childElement)
-            {
-                childElements.Add(ConvertElementToJson(childElement));
-            }
-            else if (child is XText textNode && !string.IsNullOrWhiteSpace(textNode.Value))
-            {
-                childElements.Add(new JsonObject
-                {
-                    ["type"] = "text",
-                    ["text"] = textNode.Value
-                });
-            }
-        }
-
-        if (childElements.Any())
-        {
-            jsonElement["elements"] = childElements;
-        }
-
-        return jsonElement;
     }
 
     /// <summary>
@@ -318,29 +277,118 @@ public class SuperConverterNet
     /// <returns>Document processing result</returns>
     private async Task<DocumentProcessingResult> ProcessDocumentAsync()
     {
-        var documentElements = InitialJson["elements"] as JsonArray;
-        var docElement = documentElements?[0] as JsonObject;
-        var bodyElements = docElement?["elements"] as JsonArray;
-        var bodyElement = bodyElements?.FirstOrDefault(e => (e as JsonObject)?["name"]?.ToString() == "w:body") as JsonObject;
+        if (Debug)
+        {
+            Console.WriteLine("Starting document processing...");
+            Console.WriteLine($"InitialJson structure: {InitialJson}");
+        }
+
+        // Newtonsoft.Json XML conversion creates a different structure
+        // Look for the document root - it should be something like "w:document"
+        JObject documentElement = null;
+
+        // Try to find the document element
+        foreach (var property in InitialJson.Properties())
+        {
+            if (property.Name.Contains("document"))
+            {
+                documentElement = property.Value as JObject;
+                if (Debug)
+                {
+                    Console.WriteLine($"Found document element: {property.Name}");
+                }
+                break;
+            }
+        }
+
+        if (documentElement == null)
+        {
+            if (Debug)
+            {
+                Console.WriteLine("Available root elements:");
+                foreach (var prop in InitialJson.Properties())
+                {
+                    Console.WriteLine($"  - {prop.Name}");
+                }
+            }
+            throw new InvalidOperationException("Document root element not found");
+        }
+
+        // Look for w:body element within the document
+        JObject bodyElement = null;
+
+        foreach (var property in documentElement.Properties())
+        {
+            if (property.Name.Contains("body"))
+            {
+                bodyElement = property.Value as JObject;
+                if (Debug)
+                {
+                    Console.WriteLine($"Found body element: {property.Name}");
+                }
+                break;
+            }
+        }
 
         if (bodyElement == null)
         {
+            if (Debug)
+            {
+                Console.WriteLine("Available document elements:");
+                foreach (var prop in documentElement.Properties())
+                {
+                    Console.WriteLine($"  - {prop.Name}");
+                }
+            }
             throw new InvalidOperationException("Document body not found");
         }
 
         var content = new List<Node>();
-        var bodyChildElements = bodyElement["elements"] as JsonArray;
 
-        if (bodyChildElements != null)
+        // Process body content
+        // Newtonsoft.Json creates different structures for different content types
+        foreach (var bodyProperty in bodyElement.Properties())
         {
-            foreach (var element in bodyChildElements.OfType<JsonObject>())
+            if (Debug)
             {
-                var processedNode = await ProcessElementAsync(element);
-                if (processedNode != null)
+                Console.WriteLine($"Processing body property: {bodyProperty.Name}");
+            }
+
+            // Handle different types of content (paragraphs, tables, etc.)
+            if (bodyProperty.Name.Contains("p")) // Paragraphs
+            {
+                var paragraphData = bodyProperty.Value;
+                if (paragraphData is JArray paragraphArray)
                 {
-                    content.Add(processedNode);
+                    // Multiple paragraphs
+                    foreach (var para in paragraphArray)
+                    {
+                        var paraObject = para as JObject;
+                        if (paraObject != null)
+                        {
+                            var processedNode = await ProcessParagraphFromNewtonsoftAsync(paraObject);
+                            if (processedNode != null)
+                            {
+                                content.Add(processedNode);
+                            }
+                        }
+                    }
+                }
+                else if (paragraphData is JObject singleParagraph)
+                {
+                    // Single paragraph
+                    var processedNode = await ProcessParagraphFromNewtonsoftAsync(singleParagraph);
+                    if (processedNode != null)
+                    {
+                        content.Add(processedNode);
+                    }
                 }
             }
+        }
+
+        if (Debug)
+        {
+            Console.WriteLine($"Processed {content.Count} content elements");
         }
 
         return new DocumentProcessingResult
@@ -353,316 +401,192 @@ public class SuperConverterNet
     }
 
     /// <summary>
-    /// Process individual XML element and convert to ProseMirror node
+    /// Process paragraph from Newtonsoft.Json XML structure
     /// </summary>
-    /// <param name="element">XML element as JSON</param>
-    /// <returns>ProseMirror node or null</returns>
-    private async Task<Node> ProcessElementAsync(JsonObject element)
-    {
-        var elementName = element["name"]?.ToString();
-
-        if (string.IsNullOrEmpty(elementName) || !AllowedElements.ContainsKey(elementName))
-        {
-            if (Debug)
-            {
-                Console.WriteLine($"Skipping unsupported element: {elementName}");
-            }
-            return null;
-        }
-
-        var proseMirrorType = AllowedElements[elementName];
-
-        return proseMirrorType switch
-        {
-            "paragraph" => await ProcessParagraphAsync(element),
-            "text" => await ProcessTextAsync(element),
-            "table" => await ProcessTableAsync(element),
-            "tableRow" => await ProcessTableRowAsync(element),
-            "tableCell" => await ProcessTableCellAsync(element),
-            "lineBreak" => CreateLineBreakNode(),
-            _ => await ProcessGenericElementAsync(element, proseMirrorType)
-        };
-    }
-
-    /// <summary>
-    /// Process paragraph element
-    /// </summary>
-    /// <param name="element">Paragraph XML element</param>
+    /// <param name="paragraphObject">Paragraph JSON object</param>
     /// <returns>ProseMirror paragraph node</returns>
-    private async Task<Node> ProcessParagraphAsync(JsonObject element)
+    private async Task<Node> ProcessParagraphFromNewtonsoftAsync(JObject paragraphObject)
     {
         var content = new List<Node>();
-        var attrs = ExtractParagraphAttributes(element);
-        var marks = ExtractMarksFromProperties(element);
-
-        var childElements = element["elements"] as JsonArray;
-        if (childElements != null)
-        {
-            foreach (var child in childElements.OfType<JsonObject>())
-            {
-                var childNode = await ProcessElementAsync(child);
-                if (childNode != null)
-                {
-                    content.Add(childNode);
-                }
-            }
-        }
-
-        // If paragraph is empty, add empty text node
-        if (!content.Any())
-        {
-            content.Add(_proseMirrorSchema.Text(""));
-        }
-
-        var paragraphType = _proseMirrorSchema.Nodes["paragraph"];
-        return paragraphType.Create(attrs, Fragment.From(content), marks);
-    }
-
-    /// <summary>
-    /// Process text element (w:t or w:delText)
-    /// </summary>
-    /// <param name="element">Text XML element</param>
-    /// <returns>ProseMirror text node</returns>
-    private async Task<Node> ProcessTextAsync(JsonObject element)
-    {
-        var textContent = ExtractTextContent(element);
-        var marks = ExtractMarksFromRunProperties(element);
-
-        return _proseMirrorSchema.Text(textContent, marks);
-    }
-
-    /// <summary>
-    /// Process table element
-    /// </summary>
-    /// <param name="element">Table XML element</param>
-    /// <returns>ProseMirror table node</returns>
-    private async Task<Node> ProcessTableAsync(JsonObject element)
-    {
-        var content = new List<Node>();
-        var attrs = ExtractTableAttributes(element);
-
-        var childElements = element["elements"] as JsonArray;
-        if (childElements != null)
-        {
-            foreach (var child in childElements.OfType<JsonObject>())
-            {
-                if (child["name"]?.ToString() == "w:tr")
-                {
-                    var rowNode = await ProcessTableRowAsync(child);
-                    if (rowNode != null)
-                    {
-                        content.Add(rowNode);
-                    }
-                }
-            }
-        }
-
-        var tableType = _proseMirrorSchema.Nodes["table"];
-        return tableType.Create(attrs, Fragment.From(content));
-    }
-
-    /// <summary>
-    /// Process table row element
-    /// </summary>
-    /// <param name="element">Table row XML element</param>
-    /// <returns>ProseMirror table row node</returns>
-    private async Task<Node> ProcessTableRowAsync(JsonObject element)
-    {
-        var content = new List<Node>();
-        var attrs = ExtractTableRowAttributes(element);
-
-        var childElements = element["elements"] as JsonArray;
-        if (childElements != null)
-        {
-            foreach (var child in childElements.OfType<JsonObject>())
-            {
-                if (child["name"]?.ToString() == "w:tc")
-                {
-                    var cellNode = await ProcessTableCellAsync(child);
-                    if (cellNode != null)
-                    {
-                        content.Add(cellNode);
-                    }
-                }
-            }
-        }
-
-        var tableRowType = _proseMirrorSchema.Nodes["tableRow"];
-        return tableRowType.Create(attrs, Fragment.From(content));
-    }
-
-    /// <summary>
-    /// Process table cell element
-    /// </summary>
-    /// <param name="element">Table cell XML element</param>
-    /// <returns>ProseMirror table cell node</returns>
-    private async Task<Node> ProcessTableCellAsync(JsonObject element)
-    {
-        var content = new List<Node>();
-        var attrs = ExtractTableCellAttributes(element);
-
-        var childElements = element["elements"] as JsonArray;
-        if (childElements != null)
-        {
-            foreach (var child in childElements.OfType<JsonObject>())
-            {
-                var childNode = await ProcessElementAsync(child);
-                if (childNode != null)
-                {
-                    content.Add(childNode);
-                }
-            }
-        }
-
-        // Table cells must have at least one paragraph
-        if (!content.Any())
-        {
-            var paragraphType = _proseMirrorSchema.Nodes["paragraph"];
-            content.Add(paragraphType.Create(null, Fragment.From(_proseMirrorSchema.Text(""))));
-        }
-
-        var tableCellType = _proseMirrorSchema.Nodes["tableCell"];
-        return tableCellType.Create(attrs, Fragment.From(content));
-    }
-
-    /// <summary>
-    /// Create line break node
-    /// </summary>
-    /// <returns>ProseMirror line break node</returns>
-    private Node CreateLineBreakNode()
-    {
-        var lineBreakType = _proseMirrorSchema.Nodes["lineBreak"];
-        return lineBreakType.Create();
-    }
-
-    /// <summary>
-    /// Process generic element
-    /// </summary>
-    /// <param name="element">XML element</param>
-    /// <param name="proseMirrorType">Target ProseMirror type</param>
-    /// <returns>ProseMirror node</returns>
-    private async Task<Node> ProcessGenericElementAsync(JsonObject element, string proseMirrorType)
-    {
-        // Handle other element types as needed
-        // This is a placeholder for additional element types
 
         if (Debug)
         {
-            Console.WriteLine($"Processing generic element: {proseMirrorType}");
+            Console.WriteLine($"Processing paragraph with properties: {string.Join(", ", paragraphObject.Properties().Select(p => p.Name))}");
         }
 
-        return null; // Return null for unsupported elements
+        // Look for runs (w:r elements) within the paragraph
+        foreach (var property in paragraphObject.Properties())
+        {
+            if (property.Name.Contains("r") && !property.Name.Contains("Pr")) // Runs but not properties
+            {
+                var runData = property.Value;
+                if (runData is JArray runArray)
+                {
+                    // Multiple runs
+                    foreach (var run in runArray)
+                    {
+                        var runObject = run as JObject;
+                        if (runObject != null)
+                        {
+                            var textNode = await ProcessRunFromNewtonsoftAsync(runObject);
+                            if (textNode != null)
+                            {
+                                content.Add(textNode);
+                            }
+                        }
+                    }
+                }
+                else if (runData is JObject singleRun)
+                {
+                    // Single run
+                    var textNode = await ProcessRunFromNewtonsoftAsync(singleRun);
+                    if (textNode != null)
+                    {
+                        content.Add(textNode);
+                    }
+                }
+            }
+        }
+
+        // If paragraph is empty, add a single space text node (empty text nodes are not allowed)
+        if (!content.Any())
+        {
+            content.Add(_proseMirrorSchema.Text(" "));
+        }
+
+        var paragraphType = _proseMirrorSchema.Nodes["paragraph"];
+        return paragraphType.Create(null, Fragment.From(content));
     }
+
+    /// <summary>
+    /// Process run from Newtonsoft.Json XML structure
+    /// </summary>
+    /// <param name="runObject">Run JSON object</param>
+    /// <returns>ProseMirror text node</returns>
+    private async Task<Node> ProcessRunFromNewtonsoftAsync(JObject runObject)
+    {
+        var textContent = "";
+
+        // Look for text elements (w:t)
+        foreach (var property in runObject.Properties())
+        {
+            if (property.Name.Contains("t")) // Text elements
+            {
+                var textData = property.Value;
+                if (textData is JObject textObject)
+                {
+                    // Text with attributes
+                    if (textObject["#text"] != null)
+                    {
+                        textContent += textObject["#text"]?.ToString() ?? "";
+                    }
+                }
+                else if (textData is JValue textValue)
+                {
+                    // Direct text content
+                    textContent += textValue.ToString();
+                }
+            }
+        }
+
+        // Only create text node if we have actual content (not just whitespace)
+        if (!string.IsNullOrWhiteSpace(textContent))
+        {
+            return _proseMirrorSchema.Text(textContent);
+        }
+
+        // For whitespace-only content, preserve it if it's not empty
+        if (!string.IsNullOrEmpty(textContent))
+        {
+            return _proseMirrorSchema.Text(textContent);
+        }
+
+        // Return null instead of empty text node - empty text nodes are not allowed
+        return null;
+    }
+
+    /// <summary>
+    /// Find element recursively by name (with or without namespace)
+    /// </summary>
+    /// <param name="parent">Parent element</param>
+    /// <param name="elementName">Element name to find (e.g., "w:body" or "body")</param>
+    /// <returns>Found element or null</returns>
+    private JToken FindElementRecursively(JObject parent, string elementName)
+    {
+        // For Newtonsoft.Json structure, we search through properties
+        foreach (var property in parent.Properties())
+        {
+            if (property.Name == elementName ||
+                (elementName == "body" && property.Name.Contains("body")) ||
+                (elementName == "w:body" && property.Name.Contains("body")))
+            {
+                return property.Value;
+            }
+
+            // Recursively search in child objects
+            if (property.Value is JObject childObj)
+            {
+                var found = FindElementRecursively(childObj, elementName);
+                if (found != null)
+                    return found;
+            }
+            else if (property.Value is JArray childArray)
+            {
+                foreach (var item in childArray)
+                {
+                    if (item is JObject itemObj)
+                    {
+                        var found = FindElementRecursively(itemObj, elementName);
+                        if (found != null)
+                            return found;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Log element structure for debugging
+    /// </summary>
+    /// <param name="element">Element to log</param>
+    /// <param name="indent">Indentation level</param>
+    private void LogElementStructure(JObject element, int indent)
+    {
+        var indentStr = new string(' ', indent * 2);
+
+        foreach (var property in element.Properties())
+        {
+            Console.WriteLine($"{indentStr}{property.Name}: {property.Value.Type}");
+
+            if (property.Value is JObject childObj && indent < 3) // Limit recursion depth
+            {
+                LogElementStructure(childObj, indent + 1);
+            }
+            else if (property.Value is JArray childArray && indent < 3)
+            {
+                Console.WriteLine($"{indentStr}  Array with {childArray.Count} items");
+            }
+        }
+    }
+
+    // Legacy ProcessElementAsync method removed - replaced with Newtonsoft.Json-based processing
+
+    // Legacy ProcessParagraphAsync method removed - replaced with ProcessParagraphFromNewtonsoftAsync
+
+    // Legacy ProcessTextAsync method removed - replaced with ProcessRunFromNewtonsoftAsync
+
+    // Legacy table processing methods removed - will be reimplemented with Newtonsoft.Json structure
+
+    // Legacy CreateLineBreakNode and ProcessGenericElementAsync methods removed
 
     #endregion
 
     #region Helper Methods
 
-    /// <summary>
-    /// Extract text content from XML element
-    /// </summary>
-    /// <param name="element">XML element</param>
-    /// <returns>Text content</returns>
-    private string ExtractTextContent(JsonObject element)
-    {
-        var childElements = element["elements"] as JsonArray;
-        if (childElements == null) return "";
-
-        var textBuilder = new System.Text.StringBuilder();
-        foreach (var child in childElements.OfType<JsonObject>())
-        {
-            if (child["type"]?.ToString() == "text")
-            {
-                textBuilder.Append(child["text"]?.ToString() ?? "");
-            }
-        }
-
-        return textBuilder.ToString();
-    }
-
-    /// <summary>
-    /// Extract marks from run properties (w:rPr)
-    /// </summary>
-    /// <param name="element">XML element</param>
-    /// <returns>List of ProseMirror marks</returns>
-    private List<Mark> ExtractMarksFromRunProperties(JsonObject element)
-    {
-        var marks = new List<Mark>();
-
-        // Find parent run element and its properties
-        // This is a simplified implementation - you'll need to traverse the element tree
-        // to find run properties and convert them to ProseMirror marks
-
-        return marks;
-    }
-
-    /// <summary>
-    /// Extract marks from paragraph properties
-    /// </summary>
-    /// <param name="element">XML element</param>
-    /// <returns>List of ProseMirror marks</returns>
-    private List<Mark> ExtractMarksFromProperties(JsonObject element)
-    {
-        var marks = new List<Mark>();
-
-        // Extract paragraph-level formatting
-        // Implementation needed based on specific requirements
-
-        return marks;
-    }
-
-    /// <summary>
-    /// Extract paragraph attributes
-    /// </summary>
-    /// <param name="element">Paragraph XML element</param>
-    /// <returns>Attributes dictionary</returns>
-    private Attrs? ExtractParagraphAttributes(JsonObject element)
-    {
-        // Extract paragraph properties from w:pPr
-        // Implementation needed based on specific requirements
-
-        // For now, return null - you can implement specific attribute extraction here
-        return null;
-    }
-
-    /// <summary>
-    /// Extract table attributes
-    /// </summary>
-    /// <param name="element">Table XML element</param>
-    /// <returns>Attributes dictionary</returns>
-    private Attrs? ExtractTableAttributes(JsonObject element)
-    {
-        // Extract table properties
-        // Implementation needed
-
-        return null;
-    }
-
-    /// <summary>
-    /// Extract table row attributes
-    /// </summary>
-    /// <param name="element">Table row XML element</param>
-    /// <returns>Attributes dictionary</returns>
-    private Attrs? ExtractTableRowAttributes(JsonObject element)
-    {
-        // Extract table row properties
-        // Implementation needed
-
-        return null;
-    }
-
-    /// <summary>
-    /// Extract table cell attributes
-    /// </summary>
-    /// <param name="element">Table cell XML element</param>
-    /// <returns>Attributes dictionary</returns>
-    private Attrs? ExtractTableCellAttributes(JsonObject element)
-    {
-        // Extract table cell properties like colspan, rowspan
-        // Implementation needed
-
-        return null;
-    }
+    // Legacy helper methods removed - these used JsonObject structure from System.Text.Json.Nodes
+    // which is incompatible with the Newtonsoft.Json JObject structure we now use
 
     /// <summary>
     /// Extract page styles from document
