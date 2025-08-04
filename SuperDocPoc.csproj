@@ -24,4 +24,8 @@
     <PackageReference Include="YDotNet.Server.WebSockets" Version="0.4.3" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Examples\" />
+  </ItemGroup>
+
 </Project>

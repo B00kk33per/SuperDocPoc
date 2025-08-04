@@ -1,3 +1,5 @@
+using DotNext;
+
 using SuperDocPoc.Collaboration;
 
 using YDotNet.Server;
@@ -27,6 +29,7 @@ builder.Services.AddYDotNet()
         };
     });
 
+builder.Services.AddSingleton<IDocumentManager, DocxDocumentManager>();
 builder.Services.AddSingleton<IDocumentStorage>(provider =>
     new FileSystemDocumentStorage(Path.Combine(builder.Environment.WebRootPath, "docs"), provider.GetRequiredService<ILogger<FileSystemDocumentStorage>>()));
 
